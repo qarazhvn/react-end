@@ -1,0 +1,23 @@
+# my global config
+global:
+  scrape_interval: 15s # глобальный интервал сбора метрик
+  evaluation_interval: 15s
+
+# Alertmanager configuration (если нужен, добавляйте)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  # Можно подключить правила оповещений, если нужны
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'go_app'
+    scrape_interval: 5s
+    metrics_path: '/metrics'
+    static_configs:
+      # Внутри Docker сети используем имя сервиса и порт приложения
+      - targets: ['golang:8080']
