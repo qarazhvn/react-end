@@ -1,25 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Table, Button, message, Select, Spin } from 'antd';
+import { adminAPI } from '../../services/apiService';
+import { Table, Button, message, Select, Spin, Popconfirm } from 'antd';
 
 const { Option } = Select;
 
 function UsersManagement() {
     const [users, setUsers] = useState([]);
-    const [roles, setRoles] = useState([]); // Список доступных ролей
+    const [roles, setRoles] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         loadData();
     }, []);
 
-    // Функция для загрузки данных (пользователей и ролей)
     const loadData = async () => {
         try {
             setLoading(true);
             const [usersResponse, rolesResponse] = await Promise.all([
-                axios.get('/api/admin/users'),
-                axios.get('/api/admin/roles'),
+                adminAPI.getAllUsers(),
+                adminAPI.getAllRoles(),
             ]);
             setUsers(usersResponse.data);
             setRoles(rolesResponse.data);
@@ -31,24 +30,22 @@ function UsersManagement() {
         }
     };
 
-    // Обработка удаления пользователя
     const handleDeleteUser = async (userId) => {
         try {
-            await axios.delete(`/api/admin/users/${userId}`);
+            await adminAPI.deleteUser(userId);
             message.success('User deleted successfully');
-            loadData(); // Обновляем данные после удаления
+            loadData();
         } catch (error) {
             console.error('Error deleting user:', error);
             message.error('Failed to delete user');
         }
     };
 
-    // Обработка изменения роли
     const handleRoleChange = async (userId, newRole) => {
         try {
-            await axios.put(`/api/admin/users/${userId}/role`, { role_name: newRole });
+            await adminAPI.updateUserRole(userId, { role_name: newRole });
             message.success('User role updated successfully');
-            loadData(); // Обновляем данные после изменения роли
+            loadData();
         } catch (error) {
             console.error('Error updating user role:', error);
             message.error('Failed to update user role');

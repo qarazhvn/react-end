@@ -27,25 +27,48 @@ func GetReviewsByProduct(w http.ResponseWriter, r *http.Request) {
     }
 
     rows, err := database.DB.Query(`
-        SELECT review_id, product_id, user_id, rating, comment, created_at
-        FROM Reviews WHERE product_id=$1`, productID)
+        SELECT r.review_id, r.product_id, r.user_id, r.rating, r.comment, r.created_at,
+               u.username, COALESCE(u.avatar_url, '')
+        FROM Reviews r
+        JOIN Users u ON r.user_id = u.user_id
+        WHERE r.product_id=$1
+        ORDER BY r.created_at DESC`, productID)
     if err != nil {
         http.Error(w, "Error fetching reviews", http.StatusInternalServerError)
         return
     }
     defer rows.Close()
 
-    var reviews []models.Review
+    type ReviewWithAuthor struct {
+        ReviewID   int    `json:"review_id"`
+        ProductID  int    `json:"product_id"`
+        UserID     int    `json:"user_id"`
+        Rating     int    `json:"rating"`
+        Comment    string `json:"comment"`
+        CreatedAt  string `json:"created_at"`
+        AuthorName string `json:"author_name"`
+        AvatarURL  string `json:"avatar_url"`
+    }
+
+    var reviews []ReviewWithAuthor
     for rows.Next() {
-        var review models.Review
-        err := rows.Scan(&review.ReviewID, &review.ProductID, &review.UserID, &review.Rating, &review.Comment, &review.CreatedAt)
+        var review ReviewWithAuthor
+        err := rows.Scan(&review.ReviewID, &review.ProductID, &review.UserID, &review.Rating, 
+            &review.Comment, &review.CreatedAt, &review.AuthorName, &review.AvatarURL)
         if err != nil {
+            log.Printf("Error scanning review: %v", err)
             http.Error(w, "Error scanning review", http.StatusInternalServerError)
             return
         }
         reviews = append(reviews, review)
     }
 
+    // Return empty array instead of null if no reviews
+    if reviews == nil {
+        reviews = []ReviewWithAuthor{}
+    }
+
+    w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(reviews)
 }
 

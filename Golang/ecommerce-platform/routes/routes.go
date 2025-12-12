@@ -8,99 +8,81 @@ import (
 )
 
 func RegisterRoutes(router *mux.Router) {
-    // Маршруты, не требующие аутентификации
+    // IMPORTANT: Register more specific routes BEFORE general ones
+    
+    // Публичные маршруты (без аутентификации)
     router.HandleFunc("/api/register", controllers.RegisterUser).Methods("POST")
     router.HandleFunc("/api/login", controllers.LoginUser).Methods("POST")
-
     router.HandleFunc("/api/products", controllers.GetAllProducts).Methods("GET")
-    router.HandleFunc("/api/products/{product_id}", controllers.GetProductByID).Methods("GET")
-
+    router.HandleFunc("/api/products/{product_id:[0-9]+}", controllers.GetProductByID).Methods("GET")
     router.HandleFunc("/api/categories", controllers.GetAllCategories).Methods("GET")
-    router.HandleFunc("/api/categories/{category_id}", controllers.GetCategoryByID).Methods("GET")
+    router.HandleFunc("/api/categories/{category_id:[0-9]+}", controllers.GetCategoryByID).Methods("GET")
+    router.HandleFunc("/api/products/{product_id:[0-9]+}/reviews", controllers.GetReviewsByProduct).Methods("GET")
 
-    // Подмаршруты с аутентификацией
-    api := router.PathPrefix("/api").Subrouter()
-    api.Use(middleware.AuthMiddleware)
+    // Authenticated routes - регистрируем напрямую с middleware
+    authAPI := router.PathPrefix("/api").Subrouter()
+    authAPI.Use(middleware.AuthMiddleware)
 
-    // Маршруты для пользователя
-    api.HandleFunc("/users/me", controllers.GetCurrentUser).Methods("GET")
-    api.HandleFunc("/users/me", controllers.UpdateUser).Methods("PUT")
-    api.HandleFunc("/users/me", controllers.DeleteUser).Methods("DELETE")
+    // User routes
+    authAPI.HandleFunc("/users/me", controllers.GetCurrentUser).Methods("GET")
+    authAPI.HandleFunc("/users/me", controllers.UpdateUser).Methods("PUT")
+    authAPI.HandleFunc("/users/me", controllers.DeleteUser).Methods("DELETE")
+    authAPI.HandleFunc("/users/me/avatar", controllers.UploadAvatar).Methods("POST")
+    authAPI.HandleFunc("/users/me/avatar", controllers.DeleteAvatar).Methods("DELETE")
 
-    // Маршруты для продуктов (создание, обновление, удаление - требуют прав администратора)
-    api.HandleFunc("/products", controllers.CreateProduct).Methods("POST")
-    api.HandleFunc("/products/{product_id}", controllers.UpdateProduct).Methods("PUT")
-    api.HandleFunc("/products/{product_id}", controllers.DeleteProduct).Methods("DELETE")
-    api.HandleFunc("/seller/products", controllers.GetSellerProducts).Methods("GET")
+    // Product management (authenticated)
+    authAPI.HandleFunc("/products", controllers.CreateProduct).Methods("POST")
+    authAPI.HandleFunc("/products/{product_id:[0-9]+}", controllers.UpdateProduct).Methods("PUT")
+    authAPI.HandleFunc("/products/{product_id:[0-9]+}", controllers.DeleteProduct).Methods("DELETE")
+    authAPI.HandleFunc("/products/{product_id:[0-9]+}/image", controllers.UploadProductImage).Methods("POST")
+    authAPI.HandleFunc("/products/{product_id:[0-9]+}/image", controllers.DeleteProductImage).Methods("DELETE")
+    authAPI.HandleFunc("/seller/products", controllers.GetSellerProducts).Methods("GET")
 
+    // Category management (authenticated)
+    authAPI.HandleFunc("/categories", controllers.CreateCategory).Methods("POST")
+    authAPI.HandleFunc("/categories/{category_id:[0-9]+}", controllers.UpdateCategory).Methods("PUT")
+    authAPI.HandleFunc("/categories/{category_id:[0-9]+}", controllers.DeleteCategory).Methods("DELETE")
 
-    // Маршруты для категорий (создание, обновление, удаление - требуют прав администратора)
-    api.HandleFunc("/categories", controllers.CreateCategory).Methods("POST")
-    api.HandleFunc("/categories/{category_id}", controllers.UpdateCategory).Methods("PUT")
-    api.HandleFunc("/categories/{category_id}", controllers.DeleteCategory).Methods("DELETE")
+    // Orders
+    authAPI.HandleFunc("/orders", controllers.GetUserOrders).Methods("GET")
+    authAPI.HandleFunc("/orders/checkout", controllers.CreateOrder).Methods("POST")
+    authAPI.HandleFunc("/orders/{order_id:[0-9]+}", controllers.GetOrderByID).Methods("GET")
+    authAPI.HandleFunc("/orders/{order_id:[0-9]+}/status", controllers.UpdateOrderStatus).Methods("PATCH")
+    authAPI.HandleFunc("/seller/orders", controllers.GetSellerOrders).Methods("GET")
+    authAPI.HandleFunc("/orders/{order_id:[0-9]+}/items", controllers.GetOrderItems).Methods("GET")
+    authAPI.HandleFunc("/orders/{order_id:[0-9]+}/items", controllers.AddOrderItems).Methods("POST")
 
-    // Маршруты для заказов
-    api.HandleFunc("/orders", controllers.GetUserOrders).Methods("GET")
-    api.HandleFunc("/orders/checkout", controllers.CreateOrder).Methods("POST")
-    api.HandleFunc("/orders/{order_id}", controllers.GetOrderByID).Methods("GET")
-    api.HandleFunc("/orders/{order_id}/status", controllers.UpdateOrderStatus).Methods("PATCH")
-    api.HandleFunc("/seller/orders", controllers.GetSellerOrders).Methods("GET")
+    // Cart
+    authAPI.HandleFunc("/cart", controllers.GetUserCart).Methods("GET")
+    authAPI.HandleFunc("/cart/items", controllers.GetCartItems).Methods("GET")
+    authAPI.HandleFunc("/cart/items", controllers.AddCartItem).Methods("POST")
+    authAPI.HandleFunc("/cart/items/{item_id:[0-9]+}", controllers.DeleteCartItem).Methods("DELETE")
+    authAPI.HandleFunc("/cart/items/{item_id:[0-9]+}/decrease", controllers.DecreaseCartItemQuantity).Methods("PATCH")
+    authAPI.HandleFunc("/cart/items/{item_id:[0-9]+}/increase", controllers.IncreaseCartItemQuantity).Methods("PATCH")
 
-    // Маршруты для элементов заказа
-    api.HandleFunc("/orders/{order_id}/items", controllers.GetOrderItems).Methods("GET")
-    api.HandleFunc("/orders/{order_id}/items", controllers.AddOrderItems).Methods("POST")
+    // Payments
+    authAPI.HandleFunc("/payments", controllers.GetUserPayments).Methods("GET")
+    authAPI.HandleFunc("/payments", controllers.CreatePayment).Methods("POST")
 
-    // Маршруты для корзины
-    api.HandleFunc("/cart", controllers.GetUserCart).Methods("GET")
+    // Reviews (creating requires auth)
+    authAPI.HandleFunc("/products/{product_id:[0-9]+}/reviews", controllers.CreateReview).Methods("POST")
 
-    // Маршруты для элементов корзины
-    api.HandleFunc("/cart/items", controllers.GetCartItems).Methods("GET")
-    api.HandleFunc("/cart/items", controllers.AddCartItem).Methods("POST")
-    // api.HandleFunc("/cart/items/{item_id}", controllers.UpdateCartItem).Methods("PUT")
-    api.HandleFunc("/cart/items/{item_id}", controllers.DeleteCartItem).Methods("DELETE")
-    api.HandleFunc("/cart/items/{item_id}/decrease", controllers.DecreaseCartItemQuantity).Methods("PATCH")
-    api.HandleFunc("/cart/items/{item_id}/increase", controllers.IncreaseCartItemQuantity).Methods("PATCH")
+    // Addresses
+    authAPI.HandleFunc("/addresses", controllers.GetUserAddresses).Methods("GET")
+    authAPI.HandleFunc("/addresses", controllers.AddUserAddress).Methods("POST")
 
+    // Product images
+    authAPI.HandleFunc("/products/{product_id:[0-9]+}/images", controllers.GetProductImages).Methods("GET")
+    authAPI.HandleFunc("/products/{product_id:[0-9]+}/images", controllers.AddProductImage).Methods("POST")
 
-    // Маршруты для платежей
-    api.HandleFunc("/payments", controllers.GetUserPayments).Methods("GET")
-    api.HandleFunc("/payments", controllers.CreatePayment).Methods("POST")
-
-    // Маршруты для отзывов
-    api.HandleFunc("/products/{product_id}/reviews", controllers.GetReviewsByProduct).Methods("GET")
-    api.HandleFunc("/products/{product_id}/reviews", controllers.CreateReview).Methods("POST")
-    // api.HandleFunc("/reviews/{review_id}", controllers.UpdateReview).Methods("PUT")
-    // api.HandleFunc("/reviews/{review_id}", controllers.DeleteReview).Methods("DELETE")
-
-    // Маршруты для адресов пользователя
-    api.HandleFunc("/addresses", controllers.GetUserAddresses).Methods("GET")
-    api.HandleFunc("/addresses", controllers.AddUserAddress).Methods("POST")
-    // api.HandleFunc("/addresses/{address_id}", controllers.UpdateUserAddress).Methods("PUT")
-    // api.HandleFunc("/addresses/{address_id}", controllers.DeleteUserAddress).Methods("DELETE")
-
-    // Маршруты для изображений продукта
-    api.HandleFunc("/products/{product_id}/images", controllers.GetProductImages).Methods("GET")
-    api.HandleFunc("/products/{product_id}/images", controllers.AddProductImage).Methods("POST")
-    // api.HandleFunc("/products/{product_id}/images/{image_id}", controllers.DeleteProductImage).Methods("DELETE")
-
-    // Маршруты для ролей (требуют прав администратора)
-    adminRoutes := api.PathPrefix("").Subrouter()
+    // Admin routes
+    adminRoutes := authAPI.PathPrefix("/admin").Subrouter()
     adminRoutes.Use(middleware.AdminOnly)
-
-    
-    adminRoutes.HandleFunc("/admin/roles", controllers.GetAllRoles).Methods("GET")
-    adminRoutes.HandleFunc("/admin/roles", controllers.CreateRole).Methods("POST")
-    adminRoutes.HandleFunc("/admin/users/{user_id}/role", controllers.UpdateUserRole).Methods("PUT")
-    adminRoutes.HandleFunc("/admin/users/{user_id}", controllers.DeleteUserByID).Methods("DELETE")
-    adminRoutes.HandleFunc("/admin/users", controllers.GetAllUsers).Methods("GET")
-
-
-
-    // Маршруты для журналов аудита (требуют прав администратора)
+    adminRoutes.HandleFunc("/roles", controllers.GetAllRoles).Methods("GET")
+    adminRoutes.HandleFunc("/roles", controllers.CreateRole).Methods("POST")
+    adminRoutes.HandleFunc("/users/{user_id:[0-9]+}/role", controllers.UpdateUserRole).Methods("PUT")
+    adminRoutes.HandleFunc("/users/{user_id:[0-9]+}", controllers.DeleteUserByID).Methods("DELETE")
+    adminRoutes.HandleFunc("/users", controllers.GetAllUsers).Methods("GET")
     adminRoutes.HandleFunc("/audit-logs", controllers.GetAuditLogs).Methods("GET")
-
-    // Дополнительные маршруты для сессий, если требуется
-    // api.HandleFunc("/sessions", controllers.CreateSession).Methods("POST")
-    // api.HandleFunc("/sessions", controllers.DeleteSession).Methods("DELETE")
 	
 }

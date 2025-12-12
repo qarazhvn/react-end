@@ -1,53 +1,51 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
-import { Table, Button, Modal, Form, Input, message } from 'antd';
+import { categoriesAPI } from '../../services/apiService';
+import { Table, Button, Modal, Form, Input, message, Popconfirm } from 'antd';
 
 function CategoriesModeration() {
     const [categories, setCategories] = useState([]);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchCategories();
+    const fetchCategories = useCallback(async () => {
+        setLoading(true);
+        try {
+            const res = await categoriesAPI.getAll();
+            setCategories(res.data);
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to load categories');
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
-    const fetchCategories = () => {
-        setLoading(true);
-        axios.get('/api/categories')
-            .then(res => {
-                setCategories(res.data);
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error(err);
-                setLoading(false);
-            });
+    useEffect(() => {
+        fetchCategories();
+    }, [fetchCategories]);
+
+    const handleDelete = async (categoryId) => {
+        try {
+            await categoriesAPI.delete(categoryId);
+            message.success('Category deleted successfully');
+            fetchCategories();
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to delete category');
+        }
     };
 
-    const handleDelete = (categoryId) => {
-        axios.delete(`/api/categories/${categoryId}`)
-            .then(() => {
-                message.success('Category deleted successfully');
-                fetchCategories();
-            })
-            .catch(err => {
-                console.error(err);
-                message.error('Failed to delete category');
-            });
-    };
-
-    const handleAddCategory = (values) => {
-        axios.post('/api/categories', values)
-            .then(() => {
-                message.success('Category added successfully');
-                setIsModalVisible(false);
-                fetchCategories();
-            })
-            .catch(err => {
-                console.error(err);
-                message.error('Failed to add category');
-            });
+    const handleAddCategory = async (values) => {
+        try {
+            await categoriesAPI.create(values);
+            message.success('Category added successfully');
+            setIsModalVisible(false);
+            fetchCategories();
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to add category');
+        }
     };
 
     const columns = [

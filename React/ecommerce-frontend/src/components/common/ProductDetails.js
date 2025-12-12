@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
-import { Card, Row, Col, Typography, Skeleton, Button, message, List, Rate, Form, Input } from 'antd';
+import apiClient from '../../services/apiService';
+import { Card, Row, Col, Typography, Skeleton, Button, message, List, Rate, Form, Input, Avatar } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
 import { useSelector } from 'react-redux';
+import useCart from '../../hooks/useCart';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -12,59 +14,57 @@ function ProductDetails() {
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
     const [submittingReview, setSubmittingReview] = useState(false);
+    const { addToCart } = useCart();
+
+    const getAvatarUrl = (avatarUrl) => {
+        if (!avatarUrl) return undefined;
+        // Always return relative path - nginx will proxy to backend
+        return avatarUrl;
+    };
 
     const auth = useSelector((state) => state.auth);
     const { user } = auth;
 
-    useEffect(() => {
-        axios.get(`/api/products/${id}`)
-            .then(res => {
-                setProduct(res.data.product);
-                setReviews(res.data.reviews || []);
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error('Error loading product details:', err);
-                setLoading(false);
-            });
+    const loadProductDetails = useCallback(async () => {
+        try {
+            const response = await apiClient.get(`/products/${id}`);
+            setProduct(response.data.product);
+            setReviews(response.data.reviews || []);
+            console.log('Reviews loaded:', response.data.reviews); // Debug
+        } catch (err) {
+            console.error('Error loading product details:', err);
+            message.error('Failed to load product details');
+        } finally {
+            setLoading(false);
+        }
     }, [id]);
 
-    const handleAddToCart = (productId) => {
-        axios.post('/api/cart/items', { product_id: productId, quantity: 1 })
-            .then(() => {
-                message.success('Product added to cart successfully');
-            })
-            .catch(err => {
-                console.error('Error adding product to cart:', err);
-                message.error('Failed to add product to cart');
-            });
+    useEffect(() => {
+        loadProductDetails();
+    }, [loadProductDetails]);
+
+    const handleAddToCart = async (productId) => {
+        try {
+            await addToCart(productId, 1);
+            message.success('Product added to cart successfully');
+        } catch (err) {
+            console.error('Error adding product to cart:', err);
+            message.error('Failed to add product to cart');
+        }
     };
 
-    const handleSubmitReview = (values) => {
+    const handleSubmitReview = async (values) => {
         setSubmittingReview(true);
-        axios.post(`/api/products/${id}/reviews`, values)
-            .then(() => {
-                message.success('Review submitted successfully');
-                // Обновляем список отзывов
-                axios.get(`/api/products/${id}`)
-                    .then(res => {
-                        setReviews(res.data.reviews || []);
-                    })
-                    .catch(err => {
-                        console.error('Error refreshing reviews:', err);
-                    });
-            })
-            .catch(err => {
-                console.error('Error submitting review:', err);
-                if (err.response && err.response.data) {
-                    message.error(err.response.data);
-                } else {
-                    message.error('Failed to submit review');
-                }
-            })
-            .finally(() => {
-                setSubmittingReview(false);
-            });
+        try {
+            await apiClient.post(`/products/${id}/reviews`, values);
+            message.success('Review submitted successfully');
+            await loadProductDetails();
+        } catch (err) {
+            console.error('Error submitting review:', err);
+            message.error(err.response?.data || 'Failed to submit review');
+        } finally {
+            setSubmittingReview(false);
+        }
     };
 
     if (loading) {
@@ -98,14 +98,13 @@ function ProductDetails() {
                         </div>
                     }
                     actions={[
-                        user?.role_name === 'Customer' && (
-                            <Button
-                                type="primary"
-                                onClick={() => handleAddToCart(product.product_id)}
-                            >
-                                Add to Cart
-                            </Button>
-                        ),
+                        <Button
+                            type="primary"
+                            onClick={() => handleAddToCart(product.product_id)}
+                            disabled={product.stock === 0}
+                        >
+                            Add to Cart
+                        </Button>,
                     ].filter(Boolean)}
                 >
                     <Title level={3}>{product.name}</Title>
@@ -135,14 +134,20 @@ function ProductDetails() {
                             renderItem={(review) => (
                                 <List.Item>
                                     <List.Item.Meta
+                                        avatar={
+                                            <Avatar 
+                                                src={getAvatarUrl(review.avatar_url)} 
+                                                icon={<UserOutlined />}
+                                            />
+                                        }
                                         title={
                                             <div>
-                                                <Rate disabled value={review.rating} />
-                                                <Text style={{ marginLeft: '10px' }}>
-                                                    {new Date(review.created_at).toLocaleDateString()}
-                                                </Text>
-                                                <Text style={{ marginLeft: '10px', fontWeight: 'bold' }}>
+                                                <Text style={{ fontWeight: 'bold', marginRight: 8 }}>
                                                     {review.author_name}
+                                                </Text>
+                                                <Rate disabled value={review.rating} />
+                                                <Text style={{ marginLeft: '10px', color: '#999' }}>
+                                                    {new Date(review.created_at).toLocaleDateString()}
                                                 </Text>
                                             </div>
                                         }

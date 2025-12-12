@@ -1,89 +1,90 @@
-import axios from 'axios';
-
-// Установить токен в заголовки
-const setAuthToken = (token) => {
-    if (token) {
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } else {
-        delete axios.defaults.headers.common['Authorization'];
-    }
-};
+import authService from '../../services/authService';
+import cartService from '../../services/cartService';
 
 export const loadUser = () => async (dispatch) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-        setAuthToken(token); // Установить токен
-    } else {
+    const token = authService.getToken();
+    if (!token) {
         return dispatch({ type: 'AUTH_ERROR' });
     }
 
     try {
-        const res = await axios.get('/api/users/me');
+        const userData = await authService.getCurrentUser();
         dispatch({
             type: 'USER_LOADED',
-            payload: res.data, // Данные пользователя
+            payload: userData,
         });
-        console.log('User loaded:', res.data);
+        console.log('User loaded:', userData);
     } catch (err) {
-        console.error(err);
+        console.error('Load user error:', err);
         dispatch({
             type: 'AUTH_ERROR',
         });
-        setAuthToken(null); // Удалить токен из заголовков
-        localStorage.removeItem('token'); // Очистить токен
+        authService.logout();
     }
 };
 
 export const register = (userData) => async (dispatch) => {
     try {
-        const res = await axios.post('/api/register', userData);
+        const data = await authService.register(userData);
         dispatch({
             type: 'REGISTER_SUCCESS',
-            payload: res.data, // Токен и данные пользователя
+            payload: data,
         });
 
-        const { token } = res.data;
-        localStorage.setItem('token', token);
-        setAuthToken(token);
-
-        // Загружаем пользователя после регистрации
+        // Load user after registration
         dispatch(loadUser());
     } catch (err) {
         console.error('Registration error:', err);
         dispatch({
             type: 'REGISTER_FAIL',
-            payload: err.response?.data?.message || 'Registration failed',
+            payload: err?.message || 'Registration failed',
         });
-        throw err; // Передать ошибку в компонент
+        throw err;
     }
 };
 
 export const login = (credentials) => async (dispatch) => {
     try {
-        const res = await axios.post('/api/login', credentials);
+        console.log('[AUTH] Starting login...');
+        const data = await authService.login(credentials);
+        console.log('[AUTH] Login successful, token received:', data.token?.substring(0, 20));
+        
+        // Dispatch LOGIN_SUCCESS with token
         dispatch({
             type: 'LOGIN_SUCCESS',
-            payload: res.data, // Токен и данные пользователя
+            payload: data,
         });
 
-        const { token } = res.data;
-        localStorage.setItem('token', token);
-        setAuthToken(token);
+        // Load user after login - token is already set by authService.login()
+        console.log('[AUTH] Loading user data...');
+        await dispatch(loadUser());
 
-        // Загружаем пользователя после логина
-        dispatch(loadUser());
+        // Merge local cart with backend cart
+        try {
+            const mergeResult = await cartService.mergeLocalCartWithBackend();
+            if (mergeResult.merged) {
+                console.log(mergeResult.message);
+                // You can dispatch an action to show a notification to the user
+                dispatch({
+                    type: 'CART_MERGED',
+                    payload: mergeResult,
+                });
+            }
+        } catch (mergeError) {
+            console.error('Cart merge error:', mergeError);
+            // Non-critical error, don't block login
+        }
     } catch (err) {
         console.error('Login error:', err);
         dispatch({
             type: 'LOGIN_FAIL',
-            payload: err.response?.data?.message || 'Login failed',
+            payload: err?.message || 'Login failed',
         });
-        throw err; // Передать ошибку в компонент
+        throw err;
     }
 };
 
 export const logout = () => (dispatch) => {
-    localStorage.removeItem('token');
-    setAuthToken(null);
+    authService.logout();
     dispatch({ type: 'LOGOUT' });
 };

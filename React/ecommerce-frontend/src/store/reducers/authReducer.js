@@ -4,6 +4,7 @@ const initialState = {
     isAuthenticated: false,
     loading: true,
     user: null,
+    cartMerged: null,
 };
 
 export default function authReducer(state = initialState, action) {
@@ -24,6 +25,16 @@ export default function authReducer(state = initialState, action) {
                 isAuthenticated: true,
                 loading: false,
             };
+        case 'CART_MERGED':
+            return {
+                ...state,
+                cartMerged: action.payload,
+            };
+        case 'CLEAR_CART_MERGED':
+            return {
+                ...state,
+                cartMerged: null,
+            };
         case 'AUTH_ERROR':
         case 'LOGIN_FAIL':
         case 'LOGOUT':
@@ -35,6 +46,7 @@ export default function authReducer(state = initialState, action) {
                 isAuthenticated: false,
                 loading: false,
                 user: null,
+                cartMerged: null,
             };
         default:
             return state;

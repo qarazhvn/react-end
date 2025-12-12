@@ -1,30 +1,68 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Form, Input, InputNumber, Button, Select, message } from 'antd';
+import { productsAPI, categoriesAPI } from '../../services/apiService';
+import { Form, Input, InputNumber, Button, Select, message, Upload } from 'antd';
+import { UploadOutlined } from '@ant-design/icons';
 
 const { Option } = Select;
 
 function AddProduct() {
     const [form] = Form.useForm();
     const [categories, setCategories] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [imageFile, setImageFile] = useState(null);
 
-    // Загрузка категорий
     useEffect(() => {
-        axios.get('/api/categories')
-            .then(res => setCategories(res.data))
-            .catch(err => console.error('Error fetching categories:', err));
+        const fetchCategories = async () => {
+            try {
+                const response = await categoriesAPI.getAll();
+                setCategories(response.data);
+            } catch (err) {
+                console.error('Error fetching categories:', err);
+                message.error('Failed to load categories');
+            }
+        };
+        fetchCategories();
     }, []);
 
-    const onFinish = (values) => {
-        axios.post('/api/products', values)
-            .then((res) => {
-                message.success(`Product added successfully with ID: ${res.data.product_id}`);
-                form.resetFields();
-            })
-            .catch((err) => {
-                console.error('Error adding product:', err);
-                message.error('Failed to add product');
-            });
+    const handleImageChange = (info) => {
+        if (info.fileList.length > 0) {
+            setImageFile(info.fileList[0].originFileObj);
+        } else {
+            setImageFile(null);
+        }
+        return false; // Prevent auto upload
+    };
+
+    const onFinish = async (values) => {
+        setLoading(true);
+        try {
+            // Create product first
+            const response = await productsAPI.create(values);
+            const productId = response.data.product_id;
+            message.success(`Product added successfully with ID: ${productId}`);
+
+            // Upload image if selected
+            if (imageFile) {
+                const formData = new FormData();
+                formData.append('image', imageFile);
+                
+                try {
+                    await productsAPI.uploadImage(productId, formData);
+                    message.success('Image uploaded successfully');
+                } catch (err) {
+                    console.error('Error uploading image:', err);
+                    message.warning('Product created but image upload failed');
+                }
+            }
+
+            form.resetFields();
+            setImageFile(null);
+        } catch (err) {
+            console.error('Error adding product:', err);
+            message.error('Failed to add product');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -69,8 +107,19 @@ function AddProduct() {
                     ))}
                 </Select>
             </Form.Item>
+            <Form.Item label="Product Image">
+                <Upload
+                    beforeUpload={() => false}
+                    onChange={handleImageChange}
+                    maxCount={1}
+                    accept="image/*"
+                    listType="picture"
+                >
+                    <Button icon={<UploadOutlined />}>Select Image</Button>
+                </Upload>
+            </Form.Item>
             <Form.Item>
-                <Button type="primary" htmlType="submit">Add Product</Button>
+                <Button type="primary" htmlType="submit" loading={loading}>Add Product</Button>
             </Form.Item>
         </Form>
     );

@@ -43,7 +43,8 @@
 
 import React, { useEffect } from 'react'; // Import React and useEffect
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'; // Import Router components
-import { useDispatch } from 'react-redux'; // Import useDispatch from react-redux
+import { useDispatch, useSelector } from 'react-redux'; // Import useDispatch and useSelector from react-redux
+import { message } from 'antd'; // Import message for notifications
 import { loadUser } from './store/actions/authActions'; // Import loadUser action
 
 // Import your components
@@ -52,6 +53,7 @@ import HomePage from './pages/HomePage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import NotFound from './pages/NotFound';
+import CartPage from './pages/CartPage';
 
 // Import your dashboard components
 import AdminDashboard from './components/Admin/Dashboard';
@@ -65,10 +67,28 @@ import PrivateRoute from './components/common/PrivateRoute';
 
 function App() {
     const dispatch = useDispatch();
+    const cartMerged = useSelector((state) => state.auth.cartMerged);
 
     useEffect(() => {
         dispatch(loadUser());
     }, [dispatch]);
+
+    // Show cart merge notification
+    useEffect(() => {
+        if (cartMerged) {
+            message.success({
+                content: `🛒 Your local cart was merged with your account! (${cartMerged.itemsCount} items)`,
+                duration: 5,
+                style: {
+                    marginTop: '20vh',
+                }
+            });
+            // Clear the notification state after showing
+            setTimeout(() => {
+                dispatch({ type: 'CLEAR_CART_MERGED' });
+            }, 5000);
+        }
+    }, [cartMerged, dispatch]);
 
     return (
         <Router>
@@ -76,6 +96,7 @@ function App() {
             <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/products/:id" element={<ProductDetails />} />
+                <Route path="/cart" element={<CartPage />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
 

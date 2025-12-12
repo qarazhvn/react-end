@@ -4,9 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Tasherokk/GolangProject.git/database"
@@ -255,8 +259,8 @@ func GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 
     var user models.User
     err := database.DB.QueryRow(
-        "SELECT user_id, username, email, created_at, role FROM Users WHERE user_id=$1",
-        userID).Scan(&user.UserID, &user.Username, &user.Email, &user.CreatedAt, &user.Role)
+        "SELECT user_id, username, email, created_at, role, COALESCE(avatar_url, '') FROM Users WHERE user_id=$1",
+        userID).Scan(&user.UserID, &user.Username, &user.Email, &user.CreatedAt, &user.Role, &user.AvatarURL)
     if err != nil {
         http.Error(w, "User not found", http.StatusNotFound)
         return
@@ -402,5 +406,115 @@ func UserExists(username, email string) (bool, error) {
         return false, fmt.Errorf("error checking existence: %w", err)
     }
     return exists, nil
+}
+
+// UploadAvatar handles profile picture upload
+func UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
+	if !ok {
+		http.Error(w, "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse multipart form (10 MB max)
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		http.Error(w, "File too large", http.StatusBadRequest)
+		return
+	}
+
+	// Get file from form
+	file, handler, err := r.FormFile("avatar")
+	if err != nil {
+		http.Error(w, "Error retrieving file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Validate file type
+	contentType := handler.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		http.Error(w, "Only image files are allowed", http.StatusBadRequest)
+		return
+	}
+
+	// Create uploads directory if it doesn't exist
+	uploadDir := "./uploads/avatars"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		http.Error(w, "Error creating upload directory", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate unique filename
+	ext := filepath.Ext(handler.Filename)
+	filename := fmt.Sprintf("%d_%d%s", userID, time.Now().Unix(), ext)
+	filepath := filepath.Join(uploadDir, filename)
+
+	// Create file on server
+	dst, err := os.Create(filepath)
+	if err != nil {
+		http.Error(w, "Error saving file", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	// Copy uploaded file to destination
+	if _, err := io.Copy(dst, file); err != nil {
+		http.Error(w, "Error saving file", http.StatusInternalServerError)
+		return
+	}
+
+	// Save URL to database
+	avatarURL := fmt.Sprintf("/uploads/avatars/%s", filename)
+	_, err = database.DB.Exec(
+		"UPDATE Users SET avatar_url=$1 WHERE user_id=$2",
+		avatarURL, userID)
+	if err != nil {
+		http.Error(w, "Error updating avatar URL", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"message":    "Avatar uploaded successfully",
+		"avatar_url": avatarURL,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// DeleteAvatar handles profile picture deletion
+func DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
+	if !ok {
+		http.Error(w, "User ID not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	// Get current avatar URL
+	var avatarURL sql.NullString
+	err := database.DB.QueryRow(
+		"SELECT avatar_url FROM Users WHERE user_id=$1", userID).Scan(&avatarURL)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// Delete file if exists
+	if avatarURL.Valid && avatarURL.String != "" {
+		filePath := "." + avatarURL.String
+		if err := os.Remove(filePath); err != nil {
+			log.Printf("Error deleting avatar file: %v", err)
+		}
+	}
+
+	// Clear avatar URL in database
+	_, err = database.DB.Exec(
+		"UPDATE Users SET avatar_url=NULL WHERE user_id=$1", userID)
+	if err != nil {
+		http.Error(w, "Error deleting avatar", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 

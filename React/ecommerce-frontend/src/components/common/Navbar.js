@@ -21,6 +21,10 @@ function Navbar() {
       label: <Link to="/">Home</Link>,
       key: 'home',
     },
+    {
+      label: <Link to="/cart">Cart</Link>,
+      key: 'cart',
+    },
     !isAuthenticated && {
       label: <Link to="/login">Login</Link>,
       key: 'login',

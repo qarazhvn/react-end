@@ -10,4 +10,5 @@ type User struct {
     CreatedAt    time.Time `json:"created_at"`
     Role         int       `json:"role"`
     RoleName     string    `json:"role_name"`
+    AvatarURL    string    `json:"avatar_url,omitempty"` // Profile picture URL
 }

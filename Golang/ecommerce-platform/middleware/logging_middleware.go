@@ -31,6 +31,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -55,11 +56,17 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		// Wrap the ResponseWriter to capture the status code
 		statusRecorder := &statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
 
+		// Log incoming request
+		log.Printf("[REQUEST] %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
 		// Log the request
 		next.ServeHTTP(statusRecorder, r)
 
 		// Calculate the duration
 		duration := time.Since(start).Seconds()
+
+		// Log response
+		log.Printf("[RESPONSE] %s %s -> %d (%v ms)", r.Method, r.URL.Path, statusRecorder.statusCode, duration*1000)
 
 		// Update Prometheus metrics
 		utils.HttpRequestsTotal.WithLabelValues(r.Method, r.URL.Path, http.StatusText(statusRecorder.statusCode)).Inc()

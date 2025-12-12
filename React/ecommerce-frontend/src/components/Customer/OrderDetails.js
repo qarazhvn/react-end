@@ -1,38 +1,41 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { ordersAPI, paymentsAPI } from '../../services/apiService';
 import { Table, Button, message, Modal, Select } from 'antd';
 
 const { Option } = Select;
 
 function OrderDetails() {
-    const { id } = useParams(); // Получаем ID заказа из URL
+    const { id } = useParams();
     const navigate = useNavigate();
-    const [orderItems, setOrderItems] = useState([]); // Инициализация пустым массивом
+    const [orderItems, setOrderItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isPaid, setIsPaid] = useState(false);
     const [paymentModalVisible, setPaymentModalVisible] = useState(false);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
 
     useEffect(() => {
-        setLoading(true);
-        axios.get(`/api/orders/${id}/items`) // Запрос на получение элементов заказа
-            .then(res => {
-                setOrderItems(res.data.items || []); // Убедитесь, что items — это массив
+        const fetchOrderDetails = async () => {
+            setLoading(true);
+            try {
+                const res = await ordersAPI.getOrderItems(id);
+                setOrderItems(res.data.items || []);
                 setIsPaid(res.data.status === 'Paid');
-                setLoading(false);
-            })
-            .catch(err => {
+            } catch (err) {
                 console.error(err);
-                setOrderItems([]); // На случай ошибки сбрасываем в пустой массив
+                message.error('Failed to load order details');
+                setOrderItems([]);
+            } finally {
                 setLoading(false);
-            });
+            }
+        };
+        fetchOrderDetails();
     }, [id]);
 
     const openPaymentModal = () => setPaymentModalVisible(true);
     const closePaymentModal = () => setPaymentModalVisible(false);
 
-    const handlePayment = () => {
+    const handlePayment = async () => {
         if (!selectedPaymentMethod) {
             message.error('Please select a payment method');
             return;
@@ -43,21 +46,20 @@ function OrderDetails() {
             0
         );
         
-        const order_id = parseInt(id, 10); 
-        axios.post(`/api/payments`, {
-            order_id: order_id,
-            amount: totalAmount,
-            payment_method: selectedPaymentMethod,
-        })
-            .then(() => {
-                message.success('Payment recorded successfully');
-                setIsPaid(true);
-                closePaymentModal();
-            })
-            .catch(err => {
-                console.error('Error recording payment:', err);
-                message.error('Failed to record payment');
+        const order_id = parseInt(id, 10);
+        try {
+            await paymentsAPI.createPayment({
+                order_id: order_id,
+                amount: totalAmount,
+                payment_method: selectedPaymentMethod,
             });
+            message.success('Payment recorded successfully');
+            setIsPaid(true);
+            closePaymentModal();
+        } catch (err) {
+            console.error('Error recording payment:', err);
+            message.error('Failed to record payment');
+        }
     };
 
     const columns = [

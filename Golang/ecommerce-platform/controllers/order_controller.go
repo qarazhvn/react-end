@@ -132,6 +132,11 @@ func CreateOrder(w http.ResponseWriter, r *http.Request) {
     err = tx.QueryRow("SELECT cart_id FROM ShoppingCart WHERE user_id=$1", userID).Scan(&cartID)
     if err != nil {
         tx.Rollback()
+        if err == sql.ErrNoRows {
+            log.Printf("No cart found for user %d", userID)
+            http.Error(w, "No cart found. Please add items to cart first.", http.StatusBadRequest)
+            return
+        }
         log.Printf("Error fetching cart: %v", err)
         http.Error(w, "Failed to fetch cart", http.StatusInternalServerError)
         return
@@ -187,6 +192,15 @@ func CreateOrder(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Error iterating over rows", http.StatusInternalServerError)
         return
     }
+
+    // Проверка что корзина не пуста
+    if len(items) == 0 {
+        tx.Rollback()
+        log.Printf("Cart is empty for user %d", userID)
+        http.Error(w, "Cart is empty. Please add items to cart first.", http.StatusBadRequest)
+        return
+    }
+    log.Printf("Processing %d items from cart", len(items))
 
     // Добавление элементов в заказ
     totalAmount := 0.0

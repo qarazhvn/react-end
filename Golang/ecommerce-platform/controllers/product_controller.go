@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -32,9 +35,10 @@ func GetAllProducts(w http.ResponseWriter, r *http.Request) {
             SELECT 
                 p.product_id, p.name, p.description, p.price, 
                 p.stock, p.category_id, c.name AS category_name, 
-                p.created_at
+                p.created_at, COALESCE(pi.image_url, '') AS image_url
             FROM Products p
             LEFT JOIN Categories c ON p.category_id = c.category_id
+            LEFT JOIN ProductImages pi ON p.product_id = pi.product_id
         `)
         if err != nil {
             http.Error(w, "Error fetching products", http.StatusInternalServerError)
@@ -45,11 +49,15 @@ func GetAllProducts(w http.ResponseWriter, r *http.Request) {
         var products []models.Product
         for rows.Next() {
             var product models.Product
+            var imageURL sql.NullString
             err := rows.Scan(&product.ProductID, &product.Name, &product.Description, &product.Price,
-                &product.Stock, &product.CategoryID, &product.CategoryName, &product.CreatedAt)
+                &product.Stock, &product.CategoryID, &product.CategoryName, &product.CreatedAt, &imageURL)
             if err != nil {
                 http.Error(w, "Error scanning product", http.StatusInternalServerError)
                 return
+            }
+            if imageURL.Valid {
+                product.ImageURL = imageURL.String
             }
             products = append(products, product)
         }
@@ -117,7 +125,8 @@ func GetProductByID(w http.ResponseWriter, r *http.Request) {
     rows, err := database.DB.Query(`
         SELECT 
             r.review_id, r.product_id, r.user_id, r.rating, r.comment, r.created_at, 
-            u.username AS author_name 
+            u.username AS author_name,
+            COALESCE(u.avatar_url, '') AS avatar_url
         FROM Reviews r
         JOIN Users u ON r.user_id = u.user_id
         WHERE r.product_id = $1
@@ -131,6 +140,7 @@ func GetProductByID(w http.ResponseWriter, r *http.Request) {
     type ReviewWithAuthor struct {
         models.Review
         AuthorName string `json:"author_name"`
+        AvatarURL  string `json:"avatar_url"`
     }
 
     var reviews []ReviewWithAuthor
@@ -139,6 +149,7 @@ func GetProductByID(w http.ResponseWriter, r *http.Request) {
         err := rows.Scan(
             &review.ReviewID, &review.ProductID, &review.UserID, 
             &review.Rating, &review.Comment, &review.CreatedAt, &review.AuthorName,
+            &review.AvatarURL,
         )
         if err != nil {
             http.Error(w, "Error scanning review", http.StatusInternalServerError)
@@ -454,3 +465,139 @@ func GetSellerProducts(w http.ResponseWriter, r *http.Request) {
     log.Println("Response sent successfully")
 }
 
+// Upload product image
+func UploadProductImage(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productIDStr := vars["product_id"]
+	productID, err := strconv.Atoi(productIDStr)
+	if err != nil {
+		http.Error(w, "Invalid product ID", http.StatusBadRequest)
+		return
+	}
+
+	// Parse multipart form
+	err = r.ParseMultipartForm(10 << 20) // 10 MB max
+	if err != nil {
+		log.Printf("Error parsing multipart form: %v", err)
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		log.Printf("Error getting file: %v", err)
+		http.Error(w, "Failed to get file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Validate file type
+	ext := filepath.Ext(header.Filename)
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".gif" {
+		http.Error(w, "Only image files are allowed (jpg, jpeg, png, gif)", http.StatusBadRequest)
+		return
+	}
+
+	// Create uploads directory if not exists
+	uploadDir := "./uploads/products"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		log.Printf("Error creating upload directory: %v", err)
+		http.Error(w, "Failed to create upload directory", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate unique filename
+	filename := fmt.Sprintf("%d_%d%s", productID, time.Now().Unix(), ext)
+	filepath := filepath.Join(uploadDir, filename)
+
+	// Create destination file
+	dst, err := os.Create(filepath)
+	if err != nil {
+		log.Printf("Error creating file: %v", err)
+		http.Error(w, "Failed to create file", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	// Copy file content
+	if _, err := io.Copy(dst, file); err != nil {
+		log.Printf("Error copying file: %v", err)
+		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
+	}
+
+	// Delete old image if exists
+	var oldImageURL sql.NullString
+	err = database.DB.QueryRow("SELECT image_url FROM ProductImages WHERE product_id=$1", productID).Scan(&oldImageURL)
+	if err == nil && oldImageURL.Valid && oldImageURL.String != "" {
+		oldPath := "." + oldImageURL.String
+		if err := os.Remove(oldPath); err != nil {
+			log.Printf("Warning: Could not delete old image: %v", err)
+		}
+	}
+
+	// Update or insert image URL in database
+	imageURL := fmt.Sprintf("/uploads/products/%s", filename)
+	_, err = database.DB.Exec(`
+		INSERT INTO ProductImages (product_id, image_url)
+		VALUES ($1, $2)
+		ON CONFLICT (product_id) 
+		DO UPDATE SET image_url = $2
+	`, productID, imageURL)
+	if err != nil {
+		log.Printf("Error updating database: %v", err)
+		http.Error(w, "Failed to update database", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":   "Image uploaded successfully",
+		"image_url": imageURL,
+	})
+}
+
+// Delete product image
+func DeleteProductImage(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productIDStr := vars["product_id"]
+	productID, err := strconv.Atoi(productIDStr)
+	if err != nil {
+		http.Error(w, "Invalid product ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get current image URL
+	var imageURL sql.NullString
+	err = database.DB.QueryRow("SELECT image_url FROM ProductImages WHERE product_id=$1", productID).Scan(&imageURL)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "No image found for this product", http.StatusNotFound)
+			return
+		}
+		log.Printf("Error fetching image: %v", err)
+		http.Error(w, "Failed to fetch image", http.StatusInternalServerError)
+		return
+	}
+
+	// Delete file from filesystem
+	if imageURL.Valid && imageURL.String != "" {
+		filepath := "." + imageURL.String
+		if err := os.Remove(filepath); err != nil {
+			log.Printf("Warning: Could not delete image file: %v", err)
+		}
+	}
+
+	// Delete from database
+	_, err = database.DB.Exec("DELETE FROM ProductImages WHERE product_id=$1", productID)
+	if err != nil {
+		log.Printf("Error deleting from database: %v", err)
+		http.Error(w, "Failed to delete image", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Image deleted successfully",
+	})
+}

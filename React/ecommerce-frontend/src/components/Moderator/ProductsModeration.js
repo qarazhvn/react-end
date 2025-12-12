@@ -1,19 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Table, Button, message } from 'antd';
+import React, { useEffect, useState, useCallback } from 'react';
+import { productsAPI } from '../../services/apiService';
+import { Table, Button, message, Popconfirm } from 'antd';
 
 function ProductsModeration() {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchProducts();
-    }, []);
-
-    const fetchProducts = async () => {
+    const fetchProducts = useCallback(async () => {
         try {
             setLoading(true);
-            const res = await axios.get('/api/products');
+            const res = await productsAPI.getAll();
             setProducts(res.data);
         } catch (err) {
             console.error('Error fetching products:', err);
@@ -21,13 +17,17 @@ function ProductsModeration() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchProducts();
+    }, [fetchProducts]);
 
     const handleDeleteProduct = async (productId) => {
         try {
-            await axios.delete(`/api/products/${productId}`);
+            await productsAPI.delete(productId);
             message.success('Product deleted successfully');
-            fetchProducts(); // Обновляем данные после удаления
+            fetchProducts();
         } catch (err) {
             console.error('Error deleting product:', err);
             message.error('Failed to delete product');

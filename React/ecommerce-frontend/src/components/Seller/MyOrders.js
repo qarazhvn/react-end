@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Table, Tag, Typography } from 'antd';
+import React, { useEffect, useState, useCallback } from 'react';
+import { ordersAPI } from '../../services/apiService';
+import { Table, Tag, Typography, message } from 'antd';
 
 const { Title } = Typography;
 
@@ -8,23 +8,22 @@ function MyOrders() {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchOrders();
+    const fetchOrders = useCallback(async () => {
+        setLoading(true);
+        try {
+            const res = await ordersAPI.getSellerOrders();
+            setOrders(res.data);
+        } catch (err) {
+            console.error('Error fetching orders:', err);
+            message.error('Failed to load orders');
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
-    const fetchOrders = () => {
-        setLoading(true);
-        axios
-            .get('/api/seller/orders') // Эндпоинт для получения заказов
-            .then((res) => {
-                setOrders(res.data);
-                setLoading(false);
-            })
-            .catch((err) => {
-                console.error('Error fetching orders:', err);
-                setLoading(false);
-            });
-    };
+    useEffect(() => {
+        fetchOrders();
+    }, [fetchOrders]);
 
     const columns = [
         {

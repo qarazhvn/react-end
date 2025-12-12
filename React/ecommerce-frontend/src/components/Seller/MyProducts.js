@@ -1,39 +1,38 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Table, Button, message } from 'antd';
+import React, { useEffect, useState, useCallback } from 'react';
+import { productsAPI } from '../../services/apiService';
+import { Table, Button, message, Popconfirm } from 'antd';
 import { Link } from 'react-router-dom';
 
 function MyProducts() {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchMyProducts();
+    const fetchMyProducts = useCallback(async () => {
+        setLoading(true);
+        try {
+            const response = await productsAPI.getSellerProducts();
+            setProducts(response.data);
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to load products');
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
-    const fetchMyProducts = () => {
-        setLoading(true);
-        axios.get('/api/seller/products')
-            .then(res => {
-                setProducts(res.data);
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error(err);
-                setLoading(false);
-            });
-    };
+    useEffect(() => {
+        fetchMyProducts();
+    }, [fetchMyProducts]);
 
-    const handleDelete = (productId) => {
-        axios.delete(`/api/products/${productId}`)
-            .then(() => {
-                message.success('Product deleted');
-                fetchMyProducts();
-            })
-            .catch(err => {
-                console.error(err);
-                message.error('Failed to delete product');
-            });
+    const handleDelete = async (productId) => {
+        try {
+            await productsAPI.delete(productId);
+            message.success('Product deleted');
+            fetchMyProducts();
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to delete product');
+        }
     };
 
     const columns = [

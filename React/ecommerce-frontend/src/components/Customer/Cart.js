@@ -1,77 +1,69 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Table, Button, message, Empty } from 'antd';
+import React, { useEffect } from 'react';
+import { Table, Button, message, Empty, Spin } from 'antd';
+import useCart from '../../hooks/useCart';
 
 function Cart() {
-    const [cartItems, setCartItems] = useState([]);
-    const [loading, setLoading] = useState(true); // Для отображения загрузки
+    const { 
+        cartItems, 
+        loading, 
+        loadCart, 
+        removeFromCart, 
+        updateQuantity,
+        clearCart,
+        getTotalPrice,
+        checkout
+    } = useCart();
 
     useEffect(() => {
-        fetchCartItems();
-    }, []);
+        loadCart();
+    }, [loadCart]);
 
-    const fetchCartItems = () => {
-        setLoading(true); // Включаем индикатор загрузки
-        axios.get('/api/cart/items')
-            .then(res => {
-                setCartItems(res.data || []);
-                setLoading(false); // Отключаем индикатор загрузки
-            })
-            .catch(err => {
-                console.error(err);
-                setLoading(false); // Отключаем индикатор загрузки
-            });
+    const handleRemove = async (itemId) => {
+        try {
+            await removeFromCart(itemId);
+            message.success('Item removed from cart');
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to remove item');
+        }
     };
 
-    const handleRemove = (itemId) => {
-        axios.delete(`/api/cart/items/${itemId}`)
-            .then(() => {
-                message.success('Item removed from cart');
-                fetchCartItems();
-            })
-            .catch(err => console.error(err));
+    const handleDecreaseQuantity = async (itemId, currentQuantity) => {
+        if (currentQuantity <= 1) {
+            message.warning('Minimum quantity is 1');
+            return;
+        }
+        try {
+            await updateQuantity(itemId, currentQuantity - 1);
+            message.success('Item quantity decreased');
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to decrease item quantity');
+        }
     };
 
-    const handleDecreaseQuantity = (itemId) => {
-        axios.patch(`/api/cart/items/${itemId}/decrease`)
-            .then(() => {
-                message.success('Item quantity decreased');
-                fetchCartItems(); // Обновляем корзину
-            })
-            .catch(err => {
-                console.error(err);
-                message.error('Failed to decrease item quantity');
-            });
-    };
-
-    const handleIncreaseQuantity = (itemId, currentQuantity, stock) => {
+    const handleIncreaseQuantity = async (itemId, currentQuantity, stock) => {
         if (currentQuantity >= stock) {
             message.error('Cannot add more items than available in stock');
             return;
         }
-    
-        axios.patch(`/api/cart/items/${itemId}/increase`)
-            .then(() => {
-                message.success('Item quantity increased');
-                fetchCartItems();
-            })
-            .catch(err => {
-                console.error(err);
-                message.error('Cannot add more items than available in stock');
-            });
+        try {
+            await updateQuantity(itemId, currentQuantity + 1);
+            message.success('Item quantity increased');
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to increase item quantity');
+        }
     };
-    
 
-    const handleCheckout = () => {
-        axios.post('/api/orders/checkout')
-            .then((res) => {
-                message.success(`Order created successfully. Order ID: ${res.data.order_id}`);
-                setCartItems([]); // Очищаем корзину на фронте
-            })
-            .catch((err) => {
-                console.error('Error during checkout:', err);
-                message.error('Failed to complete checkout');
-            });
+    const handleCheckout = async () => {
+        try {
+            const result = await checkout();
+            message.success(`Order created successfully. Order ID: ${result.order_id}`);
+        } catch (err) {
+            console.error('Error during checkout:', err);
+            message.error('Failed to complete checkout');
+        }
     };
 
     const columns = [
@@ -83,13 +75,24 @@ function Cart() {
             key: 'action',
             render: (_, record) => (
                 <>
-                    <Button onClick={() => handleDecreaseQuantity(record.cart_item_id)} disabled={record.quantity <= 1}>
+                    <Button 
+                        onClick={() => handleDecreaseQuantity(record.cart_item_id, record.quantity)} 
+                        disabled={record.quantity <= 1}
+                    >
                         -
                     </Button>
-                    <Button onClick={() => handleIncreaseQuantity(record.cart_item_id)} style={{ marginLeft: 8 }} disabled={record.quantity >= record.stock}>
+                    <Button 
+                        onClick={() => handleIncreaseQuantity(record.cart_item_id, record.quantity, record.stock)} 
+                        style={{ marginLeft: 8 }} 
+                        disabled={record.quantity >= record.stock}
+                    >
                         +
                     </Button>
-                    <Button onClick={() => handleRemove(record.cart_item_id)} style={{ marginLeft: 8 }}>
+                    <Button 
+                        onClick={() => handleRemove(record.cart_item_id)} 
+                        style={{ marginLeft: 8 }}
+                        danger
+                    >
                         Remove
                     </Button>
                 </>

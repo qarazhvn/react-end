@@ -62,10 +62,12 @@ func startServer() {
 	router.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {http.NotFound(w, r)})	
 	router.Handle("/metrics", promhttp.Handler())
 	
+	// Serve static files (avatars)
+	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
 
 	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
-	methodsOk := handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE"})
+	methodsOk := handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "PATCH"})
 
 	log.Println("Server started at :8080")
 	http.ListenAndServe(":8080", handlers.CORS(originsOk, headersOk, methodsOk)(router))

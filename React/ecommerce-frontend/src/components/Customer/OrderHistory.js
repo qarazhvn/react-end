@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Table, Tag } from 'antd';
+import { ordersAPI } from '../../services/apiService';
+import { Table, Tag, message } from 'antd';
 import { Link } from 'react-router-dom';
 
 function OrdersList() {
@@ -8,15 +8,18 @@ function OrdersList() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        axios.get('/api/orders') // Эндпоинт для получения заказов
-            .then(res => {
-                setOrders(res.data);
-                setLoading(false);
-            })
-            .catch(err => {
+        const fetchOrders = async () => {
+            try {
+                const response = await ordersAPI.getUserOrders();
+                setOrders(response.data);
+            } catch (err) {
                 console.error(err);
+                message.error('Failed to load orders');
+            } finally {
                 setLoading(false);
-            });
+            }
+        };
+        fetchOrders();
     }, []);
 
     const columns = [
