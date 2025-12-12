@@ -1,0 +1,85 @@
+
+
+services:
+  golang:
+    build: 
+      context: ./Golang/ecommerce-platform
+      dockerfile: Dockerfile
+    container_name: golang_service
+    depends_on:
+      - redis
+      - db
+    environment:
+      REDIS_ADDR: redis:6379
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: Taukent2004
+      DB_NAME: ecommerce
+    ports:
+      - "8080:8080"
+    networks:
+      - priority_net
+
+  react:
+    build: 
+      context: ./React/ecommerce-frontend
+      dockerfile: Dockerfile
+    container_name: react_frontend
+    depends_on:
+      - golang
+    ports:
+      - "3000:80"
+    networks:
+      - priority_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_service
+    ports:
+      - "6379:6379"
+    networks:
+      - priority_net
+
+  db:
+    image: postgres:15-alpine
+    container_name: db_service
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Taukent2004
+      POSTGRES_DB: ecommerce
+    ports:
+      - "5432:5432"
+    networks:
+      - priority_net
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_service
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    networks:
+      - priority_net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_service
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - priority_net
+
+networks:
+  priority_net:
+    driver: bridge
+
+volumes:
+  db_data:
