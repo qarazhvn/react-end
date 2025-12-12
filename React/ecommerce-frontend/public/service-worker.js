@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-globals */
 
-const CACHE_NAME = 'ecommerce-v1';
-const RUNTIME_CACHE = 'ecommerce-runtime-v1';
+const CACHE_NAME = 'ecommerce-v2';
+const RUNTIME_CACHE = 'ecommerce-runtime-v2';
 
 // App Shell - static assets to cache on install
 const APP_SHELL = [
@@ -64,6 +64,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // IMPORTANT: Skip ALL API and uploads requests - let nginx proxy handle them
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) {
+    console.log('[Service Worker] Bypassing cache for:', url.pathname);
+    return; // Don't intercept, let the request go directly through nginx
+  }
+
   // HTML - Network First (always get fresh, fallback to cache)
   if (request.headers.get('accept').includes('text/html')) {
     event.respondWith(
@@ -80,44 +86,6 @@ self.addEventListener('fetch', (event) => {
             return response || caches.match('/offline.html');
           });
         })
-    );
-    return;
-  }
-
-  // API calls - Network First with timeout
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      Promise.race([
-        fetch(request).then((response) => {
-          // Cache successful API responses
-          if (response.ok) {
-            const responseClone = response.clone();
-            caches.open(RUNTIME_CACHE).then((cache) => {
-              cache.put(request, responseClone);
-            });
-          }
-          return response;
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('timeout')), 5000)
-        )
-      ]).catch(() => {
-        // Fallback to cached API response
-        return caches.match(request).then((response) => {
-          if (response) {
-            console.log('[Service Worker] Serving cached API response');
-            return response;
-          }
-          // Return offline response for API calls
-          return new Response(
-            JSON.stringify({ error: 'Offline', message: 'You are offline' }),
-            { 
-              status: 503,
-              headers: { 'Content-Type': 'application/json' }
-            }
-          );
-        });
-      })
     );
     return;
   }

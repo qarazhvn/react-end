@@ -21,7 +21,7 @@
     "redux-thunk": "^3.1.0",
     "web-vitals": "^2.1.4"
   },
-  "proxy": "http://golang:8080",
+  "proxy": "http://188.227.107.205:8080",
   "scripts": {
     "start": "cross-env PORT=3333 react-scripts start",
     "build": "react-scripts build",
@@ -47,6 +47,7 @@
     ]
   },
   "devDependencies": {
-    "cross-env": "^7.0.3"
+    "cross-env": "^7.0.3",
+    "http-proxy-middleware": "^3.0.5"
   }
 }
